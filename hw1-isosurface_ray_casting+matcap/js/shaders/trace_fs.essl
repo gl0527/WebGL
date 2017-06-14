@@ -1,0 +1,100 @@
+Shader.source[document.currentScript.src.split('js/shaders/')[1]] = `
+	precision highp float;
+	uniform vec3 eye;
+	varying vec3 rayDir;
+	uniform samplerCube background;
+	uniform sampler2D matcap;
+	uniform mat4 viewMat;
+	uniform sampler2D data;
+	float eps = 1e-2;
+	
+	vec3 texCol(float p, vec3 r)
+	{
+		float y = floor(p / 16.0);
+		float x = mod(p, 16.0);
+		vec2 pos = vec2((x + r.x) / 16.0, (y + r.y) / 16.0);
+		return texture2D(data, pos).rgb;
+	}
+	
+ 	float brain(vec3 r)
+	{
+		r.y = 1.0 - r.y; // koordinata atalakitasa textura-koordinatakka
+		float current = r.z * 255.0;
+		
+		float former = floor(current);
+		float latter = ceil(current);
+		
+		vec3 former_color = texCol(former, r);
+		vec3 latter_color = texCol(latter, r);
+		
+		vec3 lerp = (latter - current) * former_color + (current - former) * latter_color;
+		return lerp.r;
+	}
+	
+	vec3 gradient(vec3 hit)
+	{
+		float dx = brain(hit + vec3(eps, 0.0, 0.0)) - brain(hit - vec3(eps, 0.0, 0.0));
+		float dy = brain(hit + vec3(0.0, eps, 0.0)) - brain(hit - vec3(0.0, eps, 0.0));
+		float dz = brain(hit + vec3(0.0, 0.0, eps)) - brain(hit - vec3(0.0, 0.0, eps));
+		
+		return normalize(vec3(dx, dy, dz));
+	}
+	
+	vec3 equidistRayMarching()
+	{
+		vec3 d = normalize(rayDir);
+
+		float t1_x = (1.0 - eye.x) / d.x;
+		float t2_x = (0.0 - eye.x) / d.x;
+		float tstart_x = max(min(t1_x, t2_x), 0.0);
+		float tend_x = max(max(t1_x, t2_x), 0.0);
+		
+		float t1_y = (1.0 - eye.y) / d.y;
+		float t2_y = (0.0 - eye.y) / d.y;
+		float tstart_y = max(min(t1_y, t2_y), 0.0);
+		float tend_y = max(max(t1_y, t2_y), 0.0);
+		
+		float t1_z = (1.0 - eye.z) / d.z;
+		float t2_z = (0.0 - eye.z) / d.z;
+		float tstart_z = max(min(t1_z, t2_z), 0.0);
+		float tend_z = max(max(t1_z, t2_z), 0.0);
+		
+		float tstart = max(tstart_x, max(tstart_y, tstart_z));
+		float tend = min(tend_x, min(tend_y, tend_z));
+		
+		if(tstart > tend)
+			return textureCube(background, d).rgb;
+		
+		vec3 p = eye + d * tstart;
+		vec3 step =	d * min((tend - tstart) / 128.0, eps);
+		bool hit = false;
+		float treshold = 0.2;
+		
+		for(int i=0; i<128; i++){
+			if(brain(p) > treshold)
+			{
+				hit = true;
+				break;
+			}		
+			p += step;
+		}
+		if (hit)
+		{
+			step *= 0.5;
+			p -= step;
+			for(int i=0; i<8; i++)
+			{
+				p = brain(p) < treshold ? p + step : p - step;
+				step *= 0.5;
+			}
+			vec4 textureCoord = vec4(gradient(p), 0.0) * viewMat;
+			return texture2D(matcap, 0.5 * textureCoord.xy + 0.5).rgb;
+		}
+		return vec3(0.0, 0.0, 0.0);
+	}
+	
+	void main(void) {
+		vec4 outColor = vec4(equidistRayMarching(), 1.0);
+		gl_FragColor = outColor;
+	}
+`;

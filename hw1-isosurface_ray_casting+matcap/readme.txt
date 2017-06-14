@@ -1,0 +1,3 @@
+ISOSURFACE RAY CASTING IN VOXEL GRID WITH MATERIAL CAPTURE
+
+Írjon WebGL alkalmazást, amely egy emberi agyat jelenít meg. Szintfelületet jelenítsen meg (isosurface ray casting). Az újramintavételezéshez használjon trilineáris interpolációt. Mivel a WebGL 1 nem támogatja a trilineáris interpolációt, ezért azt két bilineáris interpolációra visszavezetve lehet implementálni. Az agy 2D szeleteit az Adatok és modellek címszó alatt érheti el. Az árnyalást material capture módszerrel valósítsa meg!
