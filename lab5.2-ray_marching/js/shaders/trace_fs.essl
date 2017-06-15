@@ -1,0 +1,107 @@
+Shader.source[document.currentScript.src.split('js/shaders/')[1]] = `
+	precision highp float;
+	uniform vec3 eye;
+	varying vec3 rayDir;
+	uniform samplerCube background;
+	float eps = 1e-2;
+	
+	float noise(vec3 r) {
+		vec3 s = vec3(7502.0, 22777.0, 4767.0);
+		float w = 0.0;
+		for(int i=0; i<16; i++) {
+			w += sin(dot(s - vec3(32768.0, 32768.0, 32768.0),r * 40.0) * 0.000015);
+			s = mod(s, 32768.0) * 2.0 + floor(s * 0.00003);
+		}
+		return w * 0.03125 + 0.5 - r.y;
+	}
+	
+	vec3 gradient(vec3 hit)
+	{
+		float dx = noise(hit + vec3(eps, 0.0, 0.0)) - noise(hit - vec3(eps, 0.0, 0.0));
+		float dy = noise(hit + vec3(0.0, eps, 0.0)) - noise(hit - vec3(0.0, eps, 0.0));
+		float dz = noise(hit + vec3(0.0, 0.0, eps)) - noise(hit - vec3(0.0, 0.0, eps));
+		
+		return normalize(vec3(dx, dy, dz));
+	}
+	
+	vec3 equidistRayMarching()
+	{
+		vec3 d = normalize(rayDir);
+
+		// calculate ray intersections with y=1.0 and y=0.0 planes, where the noise takes place
+		float t1 = (1.0 - eye.y) / d.y;
+		float t2 = (0.0 - eye.y) / d.y;
+		float tstar = max(min(t1, t2), 0.0);
+		float tend = max(max(t1, t2), 0.0);
+		
+		vec3 p = eye + d * tstar;
+		vec3 step =	d * min((tend - tstar) / 128.0, eps);
+		bool hit = false;
+		// equidistant ray marching
+		for(int i=0; i<128; i++){
+			if(noise(p) > 0.0)
+			{
+				hit = true;
+				break;
+			}
+			p += step;
+		}
+		// progressive refinement
+		if (hit)
+		{
+			step *= 0.5;
+			p -= step;
+			for(int i=0; i<6; i++)
+			{
+				p += noise(p) < 0.0 ? step : -step;
+				step *= 0.5;
+			}
+			// environment mapping
+			return textureCube(background, gradient(p)).rgb;
+		}
+		else
+			return textureCube(background, d).rgb;
+	}
+	
+	vec3 binaryRayMarching()
+	{
+		vec3 d = normalize(rayDir);
+
+		// calculate ray intersections with y=1.0 and y=0.0 planes, where the noise takes place
+		float t1 = (1.0 - eye.y) / d.y;
+		float t2 = (0.0 - eye.y) / d.y;
+		float tstar = max(min(t1, t2), 0.0);
+		float tend = max(max(t1, t2), 0.0);
+		
+		vec3 p = eye + d * tstar;
+		vec3 step =	d * min((tend - tstar) / 580.0, eps);
+		bool hit = false;
+		// ray marching, where the step is not constant
+		for(int i=0; i<128; i++){
+			if(noise(p) > 0.0) {
+				hit = true;
+				break;
+			}
+			p += step;
+			step *= 1.02;
+		}
+		// progressive refinement
+		if (hit)
+		{
+			step *= 0.5;
+			p -= step;
+			for(int i=0; i<6; i++)
+			{
+				p += noise(p) < 0.0 ? step : -step;
+				step *= 0.5;
+			}
+			// environment mapping
+			return textureCube(background, gradient(p)).rgb;
+		}
+		return textureCube(background, d).rgb;
+	}
+	
+	void main(void) {
+		gl_FragColor = vec4(binaryRayMarching(), 1.0);
+	}
+`;
