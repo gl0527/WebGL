@@ -1,0 +1,78 @@
+Shader.source[document.currentScript.src.split('js/shaders/')[1]] = `
+	precision highp float;
+	uniform vec3 eye;
+	varying vec3 rayDir;
+	uniform samplerCube background;
+	float eps = 1.0e-2;
+	
+	// quaternion operations
+	vec4 quatMult(vec4 q1, vec4 q2) {
+		vec4 r;
+		r.x = q1.x * q2.x - dot(q1.yzw, q2.yzw);
+		r.yzw = q1.x * q2.yzw + q2.x * q1.yzw + cross(q1.yzw, q2.yzw);
+		return r;
+	}
+
+	vec4 quatSq(vec4 q) {
+		vec4 r;
+		r.x = q.x * q.x - dot(q.yzw, q.yzw);
+		r.yzw = 2.0 * q.x * q.yzw;
+		return r;
+	}
+	
+	void iterateIntersect(inout vec4 q, inout vec4 qp) {
+		for(int i = 0; i < 10; i++) {
+			qp = 2.0 * quatMult(q, qp);
+			//q = quatSq(q) + vec4(1, 0.5, -0.1, 0.3);
+			q = quatSq(q) + vec4(-0.2, 0.8, 0.0, 0.0);
+			//q = quatSq(q) + vec4(-0.2, 0.4, -0.4, -0.4);
+
+			if(dot(q,q) > 7.0)
+				break;
+		}
+	}
+	
+	// calculate distance from the 4 dimensional Julia set
+	float dist(vec3 p)
+	{
+		vec4 z = vec4(p, 0.0);
+		vec4 zp = vec4(1.0, 0.0, 0.0, 0.0);
+		iterateIntersect(z, zp);
+		float normZ = length(z);
+		return 0.5 * normZ * log(normZ) / length(zp);
+	}
+
+	vec3 gradient(vec3 hit)
+	{
+		float dx = dist(hit + vec3(eps, 0.0, 0.0)) - dist(hit - vec3(eps, 0.0, 0.0));
+		float dy = dist(hit + vec3(0.0, eps, 0.0)) - dist(hit - vec3(0.0, eps, 0.0));
+		float dz = dist(hit + vec3(0.0, 0.0, eps)) - dist(hit - vec3(0.0, 0.0, eps));
+		
+		return normalize(vec3(dx, dy, dz));
+	}
+	
+	vec3 sphereTracing(vec4 e, vec4 d)
+	{
+		bool hit = false;
+		for(int i=0; i<30; ++i)
+		{
+			float distance = dist(e.xyz);
+			if (distance < eps)
+			{
+				hit = true;
+				break;
+			}
+			e = e + distance * d;
+		}
+		if(hit)
+			return gradient(e.xyz);
+		return textureCube(background, d.xyz).rgb;
+	}
+	
+	void main(void) {
+		vec4 d = vec4(normalize(rayDir), 0.0);
+		vec4 e = vec4(eye, 1.0); 
+		
+		gl_FragColor = vec4(sphereTracing(e, d), 1.0);
+	}
+`;
