@@ -1,88 +1,88 @@
 Shader.source[document.currentScript.src.split('js/shaders/')[1]] = `
-	precision highp float;
-	uniform vec3 eye;
-	varying vec3 rayDir;
-	uniform mat4 quadrics[32];
-	uniform vec4 materials[16];
-	uniform samplerCube background;
-	
-	float intersectClippedQuadric(mat4 A, mat4 B, vec4 e, vec4 d) {
+    precision highp float;
+    uniform vec3 eye;
+    varying vec3 rayDir;
+    uniform mat4 quadrics[32];
+    uniform vec4 materials[16];
+    uniform samplerCube background;
+    
+    float intersectClippedQuadric(mat4 A, mat4 B, vec4 e, vec4 d) {
         float a = dot(d, A * d);
         float b = dot(e, A * d) + dot(d, A * e);
         float c = dot(e, A * e);
    
         float discr = b * b - 4.0 * a * c;
         if (discr < 0.0)
-			return -1.0;
+            return -1.0;
         float sqrt_discr = sqrt(discr);
         float t1 = (-b + sqrt_discr)/2.0/a;
         float t2 = (-b - sqrt_discr)/2.0/a;
-		
-		vec4 hit1 = e + d * t1;
-		vec4 hit2 = e + d * t2;
-		
-		if(dot(hit1, hit1 * B) > 0.0)
-			t1 = -1.0;
-		if(dot(hit2, hit2 * B) > 0.0)
-			t2 = -1.0; 
+        
+        vec4 hit1 = e + d * t1;
+        vec4 hit2 = e + d * t2;
+        
+        if(dot(hit1, hit1 * B) > 0.0)
+            t1 = -1.0;
+        if(dot(hit2, hit2 * B) > 0.0)
+            t2 = -1.0; 
    
-		float t = min(t1, t2);
+        float t = min(t1, t2);
         if(t < 0.0)
-			t = max(t1, t2);
+            t = max(t1, t2);
         return t;
     }
-	
-	vec3 getQuadricNormal(mat4 A, vec4 hit)
-	{
-		return normalize((A * hit + hit * A).xyz);
-	}
-	
-	vec3 trace(inout vec4 e, inout vec4 d, inout float contrib)
+    
+    vec3 getQuadricNormal(mat4 A, vec4 hit)
+    {
+        return normalize((A * hit + hit * A).xyz);
+    }
+    
+    vec3 trace(inout vec4 e, inout vec4 d, inout float contrib)
     {
         float bestT = 10000.0;
         vec4 bestMaterial;
         mat4 bestQuadric;
-		
-		// intersect quadrics
+        
+        // intersect quadrics
         for(int i=0; i<3; i++) {
-			float t = intersectClippedQuadric(quadrics[2*i], quadrics[2*i+1], e, d);
-			if(t > 0.0 && t < bestT) {
-				bestT = t;
-				bestQuadric = quadrics[2*i];
-				bestMaterial = materials[i];
-			}
+            float t = intersectClippedQuadric(quadrics[2*i], quadrics[2*i+1], e, d);
+            if(t > 0.0 && t < bestT) {
+                bestT = t;
+                bestQuadric = quadrics[2*i];
+                bestMaterial = materials[i];
+            }
         }
-		// if there was no intersection, we return with the background
-		if(bestT > 9999.0)
-			return textureCube(background, d.xyz).rgb;
+        // if there was no intersection, we return with the background
+        if(bestT > 9999.0)
+            return textureCube(background, d.xyz).rgb;
 
-		vec4 hit = e + d * bestT;
-		vec3 normal = getQuadricNormal(bestQuadric, hit);
-		if(dot(d.xyz, normal) > 0.0)
-			normal = normal * (-1.0);
-		
-		float g = contrib;
-		contrib *= bestMaterial.w;
-		// calculate reflection (w component is used for reflectiveness)
-		if(bestMaterial.w > 0.01) {
-			e = hit + vec4(normal, 0.0) * 0.001;
-			d.xyz = reflect(d.xyz, normal);
-		}
-		return bestMaterial.xyz * g;
-	}
-	
-	void main(void) {
-		vec4 d = vec4(normalize(rayDir), 0.0);
-		vec4 e = vec4(eye, 1.0);
-		vec4 outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        vec4 hit = e + d * bestT;
+        vec3 normal = getQuadricNormal(bestQuadric, hit);
+        if(dot(d.xyz, normal) > 0.0)
+            normal = normal * (-1.0);
+        
+        float g = contrib;
+        contrib *= bestMaterial.w;
+        // calculate reflection (w component is used for reflectiveness)
+        if(bestMaterial.w > 0.01) {
+            e = hit + vec4(normal, 0.0) * 0.001;
+            d.xyz = reflect(d.xyz, normal);
+        }
+        return bestMaterial.xyz * g;
+    }
+    
+    void main(void) {
+        vec4 d = vec4(normalize(rayDir), 0.0);
+        vec4 e = vec4(eye, 1.0);
+        vec4 outColor = vec4(0.0, 0.0, 0.0, 1.0);
         float contrib = 1.0;
-		
+        
         for(int iReflection = 0; iReflection < 3; iReflection++)
         {
-			outColor.xyz += trace(e, d, contrib);
-			if(contrib < 0.05)
-				break;
+            outColor.xyz += trace(e, d, contrib);
+            if(contrib < 0.05)
+                break;
         } 
-		gl_FragColor = outColor;
-	}
+        gl_FragColor = outColor;
+    }
 `;
