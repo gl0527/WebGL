@@ -1,122 +1,122 @@
 Shader.source[document.currentScript.src.split('js/shaders/')[1]] = `
-	precision highp float;
-	uniform vec3 eye;
-	varying vec3 rayDir;
-	uniform samplerCube background;
-	uniform sampler2D matcap;
-	uniform mat4 viewMat;
-	uniform sampler2D data;
-	float eps = 1e-2;
-	
-	vec3 texCol(float sliceID, vec3 r)
-	{
-		// get the coordinates of the given slice on the 2D texture
-		float y = floor(sliceID / 16.0);
-		float x = mod(sliceID, 16.0);
-		
-		// get the color from the current slice (1/16 x 1/16 texture)
-		vec2 pos = vec2((x + r.x) / 16.0, (y + r.y) / 16.0);
-		return texture2D(data, pos).rgb;
-	}
-	
- 	float volume(vec3 r)
-	{
-		// coordinate transform 
-		r.y = 1.0 - r.y;
-		
-		// scale up the z coordinate of the parameter from [0..1] to [0..255]
-		// because we have 256 2D slices about the volumetric data
-		// so we put the (parallel) slices along the z axis
-		float current = r.z * 255.0;
-		
-		// determine the 2 neighbor slices of the current raypoint
-		float former = floor(current);
-		float latter = ceil(current);
-		
-		// determine the color of the neighbor slices
-		vec3 former_color = texCol(former, r);
-		vec3 latter_color = texCol(latter, r);
-		
-		// linear interpolation between the color of the neighbor slices
-		vec3 lerp = (latter - current) * former_color + (current - former) * latter_color;
-		
-		// return the first component of the linear interpolated color
-		// it is enough because the image is grayscaled
-		return lerp.r;
-	}
-	
-	vec3 gradient(vec3 hit)
-	{
-		float dx = volume(hit + vec3(eps, 0.0, 0.0)) - volume(hit - vec3(eps, 0.0, 0.0));
-		float dy = volume(hit + vec3(0.0, eps, 0.0)) - volume(hit - vec3(0.0, eps, 0.0));
-		float dz = volume(hit + vec3(0.0, 0.0, eps)) - volume(hit - vec3(0.0, 0.0, eps));
-		
-		return normalize(vec3(dx, dy, dz));
-	}
-	
-	vec3 equidistRayMarching()
-	{
-		// determine where the current ray (origin: eye, direction: rayDir)
-		// intersects the surface of the unit cube
-		// the results will be the tstart and tend ray parameters
-		vec3 d = normalize(rayDir);
+    precision highp float;
+    uniform vec3 eye;
+    varying vec3 rayDir;
+    uniform samplerCube background;
+    uniform sampler2D matcap;
+    uniform mat4 viewMat;
+    uniform sampler2D data;
+    float eps = 1e-2;
+    
+    vec3 texCol(float sliceID, vec3 r)
+    {
+        // get the coordinates of the given slice on the 2D texture
+        float y = floor(sliceID / 16.0);
+        float x = mod(sliceID, 16.0);
+        
+        // get the color from the current slice (1/16 x 1/16 texture)
+        vec2 pos = vec2((x + r.x) / 16.0, (y + r.y) / 16.0);
+        return texture2D(data, pos).rgb;
+    }
+    
+     float volume(vec3 r)
+    {
+        // coordinate transform 
+        r.y = 1.0 - r.y;
+        
+        // scale up the z coordinate of the parameter from [0..1] to [0..255]
+        // because we have 256 2D slices about the volumetric data
+        // so we put the (parallel) slices along the z axis
+        float current = r.z * 255.0;
+        
+        // determine the 2 neighbor slices of the current raypoint
+        float former = floor(current);
+        float latter = ceil(current);
+        
+        // determine the color of the neighbor slices
+        vec3 former_color = texCol(former, r);
+        vec3 latter_color = texCol(latter, r);
+        
+        // linear interpolation between the color of the neighbor slices
+        vec3 lerp = (latter - current) * former_color + (current - former) * latter_color;
+        
+        // return the first component of the linear interpolated color
+        // it is enough because the image is grayscaled
+        return lerp.r;
+    }
+    
+    vec3 gradient(vec3 hit)
+    {
+        float dx = volume(hit + vec3(eps, 0.0, 0.0)) - volume(hit - vec3(eps, 0.0, 0.0));
+        float dy = volume(hit + vec3(0.0, eps, 0.0)) - volume(hit - vec3(0.0, eps, 0.0));
+        float dz = volume(hit + vec3(0.0, 0.0, eps)) - volume(hit - vec3(0.0, 0.0, eps));
+        
+        return normalize(vec3(dx, dy, dz));
+    }
+    
+    vec3 equidistRayMarching()
+    {
+        // determine where the current ray (origin: eye, direction: rayDir)
+        // intersects the surface of the unit cube
+        // the results will be the tstart and tend ray parameters
+        vec3 d = normalize(rayDir);
 
-		float t1_x = (1.0 - eye.x) / d.x;
-		float t2_x = (0.0 - eye.x) / d.x;
-		float tstart_x = max(min(t1_x, t2_x), 0.0);
-		float tend_x = max(max(t1_x, t2_x), 0.0);
-		
-		float t1_y = (1.0 - eye.y) / d.y;
-		float t2_y = (0.0 - eye.y) / d.y;
-		float tstart_y = max(min(t1_y, t2_y), 0.0);
-		float tend_y = max(max(t1_y, t2_y), 0.0);
-		
-		float t1_z = (1.0 - eye.z) / d.z;
-		float t2_z = (0.0 - eye.z) / d.z;
-		float tstart_z = max(min(t1_z, t2_z), 0.0);
-		float tend_z = max(max(t1_z, t2_z), 0.0);
-		
-		float tstart = max(tstart_x, max(tstart_y, tstart_z));
-		float tend = min(tend_x, min(tend_y, tend_z));
-		
-		// if the ray did not intersect the unit cube, then the output is the background
-		if(tstart > tend)
-			return textureCube(background, d).rgb;
-		
-		vec3 rayPoint = eye + d * tstart;
-		vec3 step =	d * min((tend - tstart) / 128.0, eps);
-		bool hit = false;
-		float treshold = 0.2;
-		
-		// equidistant sampling from the volumetric data
-		for(int i=0; i<128; i++){
-			if(volume(rayPoint) > treshold)
-			{
-				hit = true;
-				break;
-			}		
-			rayPoint += step;
-		}
-		// if the ray got into the volumetric data, we have to find its surface
-		if (hit)
-		{
-			step *= 0.5;
-			rayPoint -= step;
-			// surface approximation using progressive refinement
-			for(int i=0; i<8; i++)
-			{
-				rayPoint += (volume(rayPoint) < treshold) ? step : -step;
-				step *= 0.5;
-			}
-			// shading using the material capture technique
-			vec4 textureCoord = vec4(gradient(rayPoint), 0.0) * viewMat;
-			return texture2D(matcap, 0.5 * textureCoord.xy + 0.5).rgb;
-		}
-		// if the ray intersected the unit cube but not the volumetric data, we return black color
-		return vec3(0.0, 0.0, 0.0);
-	}
-	
-	void main(void) {
-		gl_FragColor = vec4(equidistRayMarching(), 1.0);
-	}
+        float t1_x = (1.0 - eye.x) / d.x;
+        float t2_x = (0.0 - eye.x) / d.x;
+        float tstart_x = max(min(t1_x, t2_x), 0.0);
+        float tend_x = max(max(t1_x, t2_x), 0.0);
+        
+        float t1_y = (1.0 - eye.y) / d.y;
+        float t2_y = (0.0 - eye.y) / d.y;
+        float tstart_y = max(min(t1_y, t2_y), 0.0);
+        float tend_y = max(max(t1_y, t2_y), 0.0);
+        
+        float t1_z = (1.0 - eye.z) / d.z;
+        float t2_z = (0.0 - eye.z) / d.z;
+        float tstart_z = max(min(t1_z, t2_z), 0.0);
+        float tend_z = max(max(t1_z, t2_z), 0.0);
+        
+        float tstart = max(tstart_x, max(tstart_y, tstart_z));
+        float tend = min(tend_x, min(tend_y, tend_z));
+        
+        // if the ray did not intersect the unit cube, then the output is the background
+        if(tstart > tend)
+            return textureCube(background, d).rgb;
+        
+        vec3 rayPoint = eye + d * tstart;
+        vec3 step =    d * min((tend - tstart) / 128.0, eps);
+        bool hit = false;
+        float treshold = 0.2;
+        
+        // equidistant sampling from the volumetric data
+        for(int i=0; i<128; i++){
+            if(volume(rayPoint) > treshold)
+            {
+                hit = true;
+                break;
+            }        
+            rayPoint += step;
+        }
+        // if the ray got into the volumetric data, we have to find its surface
+        if (hit)
+        {
+            step *= 0.5;
+            rayPoint -= step;
+            // surface approximation using progressive refinement
+            for(int i=0; i<8; i++)
+            {
+                rayPoint += (volume(rayPoint) < treshold) ? step : -step;
+                step *= 0.5;
+            }
+            // shading using the material capture technique
+            vec4 textureCoord = vec4(gradient(rayPoint), 0.0) * viewMat;
+            return texture2D(matcap, 0.5 * textureCoord.xy + 0.5).rgb;
+        }
+        // if the ray intersected the unit cube but not the volumetric data, we return black color
+        return vec3(0.0, 0.0, 0.0);
+    }
+    
+    void main(void) {
+        gl_FragColor = vec4(equidistRayMarching(), 1.0);
+    }
 `;
